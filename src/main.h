@@ -3,6 +3,7 @@
 #include <avr/io.h>
 #include <avr/pgmspace.h>
 #include <util/delay.h>
+#include <string.h>
 #include "millis.h"
 #include "melody.h"
 
@@ -38,6 +39,10 @@
 
 #define BUTTON_GROUNDING_ENABLE PA6
 
+#define ANIMATION_NONE 0
+#define ANIMATION_WIN 1
+#define ANIMATION_DRAW 2
+
 
 void lightUpLeds();
 
@@ -48,3 +53,13 @@ int getLedRowPin(uint8_t row, bool red);
 void readButtons();
 
 void onButtonPressed(uint8_t column, uint8_t row);
+
+void playAnimation(uint8_t animationId);
+
+void animate();
+
+bool checkWin();
+
+void restartGame();
+
+void turnLightsByMarkersThatWin(bool turnOn);

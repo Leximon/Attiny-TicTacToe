@@ -2,9 +2,29 @@
 
 #include "main.h"
 
-static const uint16_t MARKER_PLACED[] PROGMEM = {100, 100, 100, 50};
+static const uint16_t MELODY_MARKER_PLACED[] PROGMEM = {
+        100, 100,
+        100, 50
+};
+static const uint16_t MELODY_DRAW[] PROGMEM = {
+        100, 100,
+        50, 0,
+        100, 150,
+        50, 0,
+        100, 200
+};
+static const uint16_t MELODY_WIN[] PROGMEM = {
+        100, 100,
+        50, 0,
+        100, 75,
+        50, 0,
+        100, 50,
+        50, 0,
+        100, 75
+};
 
-static uint8_t board[ROWS] = {0, 0, 0};
+static uint8_t lights[COLUMNS] = {0, 0, 0};
+static bool lightsOn = true;
 
 int main() {
     initMillis(F_CPU);
@@ -13,7 +33,10 @@ int main() {
     sei();
 
     while (true) {
-        lightUpLeds();
+        animate();
+        if (lightsOn) {
+            lightUpLeds();
+        }
         readButtons();
         Melody::tryPlayNextNote();
     }
@@ -31,8 +54,8 @@ void lightUpLeds() {
     for (uint8_t column = 0; column < COLUMNS; column++) {
         PORTB |= ALL_COL_MASK; // set all columns to HIGH
 
-        lightUpLedsInColumn(column, board[column]);
-        _delay_ms(1);
+        lightUpLedsInColumn(column, lights[column]);
+        _delay_ms(2);
 
         PORTA &= ~ALL_ROW_MASK; // turn off all row leds
     }
@@ -129,16 +152,171 @@ void readButtons() {
     }
 }
 
-bool isRedsTurn = false;
+static uint8_t board[COLUMNS] = {0, 0, 0};
+static bool isRedsTurn = false;
+static uint8_t markersPlaced = 0;
+static uint8_t markersThatWin[COLUMNS] = {0, 0, 0};
 
+static int animation = ANIMATION_NONE;
+static uint32_t animationStartTime = 0;
+
+void setCellState(uint8_t* grid, uint8_t column, uint8_t row, uint8_t state) {
+    uint8_t bitShift = row * 2;
+    grid[column] &= ~(0b11 << bitShift);
+    grid[column] |= state << bitShift;
+}
+
+uint8_t getCellState(const uint8_t* grid, uint8_t column, uint8_t row) {
+    uint8_t bitShift = row * 2;
+    return (grid[column] >> bitShift) & 0b11;
+}
 
 void onButtonPressed(uint8_t column, uint8_t row) {
-    if (board[column] >> (row * 2) & 0x1) {
+    if (board[column] >> (row * 2) & 0x1 || animation != ANIMATION_NONE) {
         return;
     }
 
-    board[column] |= (isRedsTurn ? 0b11 : 0b01) << (row * 2);
-    isRedsTurn = !isRedsTurn;
+    uint8_t state = isRedsTurn ? 0b11 : 0b01;
+    setCellState(board, column, row, state);
+    setCellState(lights, column, row, state);
 
-    Melody::play(MARKER_PLACED, sizeof(MARKER_PLACED) / sizeof(uint16_t) / 2);
+    isRedsTurn = !isRedsTurn;
+    markersPlaced++;
+
+    if (checkWin()) {
+        Melody::play(MELODY_WIN, sizeof(MELODY_WIN) / sizeof(uint16_t) / 2);
+        playAnimation(ANIMATION_WIN);
+        return;
+    }
+
+    if (markersPlaced == ROWS * COLUMNS) {
+        Melody::play(MELODY_DRAW, sizeof(MELODY_DRAW) / sizeof(uint16_t) / 2);
+        playAnimation(ANIMATION_DRAW);
+        return;
+    }
+
+    Melody::play(MELODY_MARKER_PLACED, sizeof(MELODY_MARKER_PLACED) / sizeof(uint16_t) / 2);
+}
+
+bool checkWin() {
+    // columns
+    for (uint8_t column = 0; column < COLUMNS; column++) {
+        if (board[column] == 0b010101 || board[column] == 0b111111) {
+            memset(markersThatWin, 0, sizeof(markersThatWin));
+            markersThatWin[column] = board[column];
+            return true;
+        }
+    }
+
+    // rows
+    for (uint8_t row = 0; row < ROWS; row++) {
+        memset(markersThatWin, 0, sizeof(markersThatWin));
+
+        uint8_t state = getCellState(board, 0, row);
+        if (state == 0b00) {
+            continue;
+        }
+        setCellState(markersThatWin, 0, row, state);
+
+        bool validStreak = true;
+        for (uint8_t column = 1; column < COLUMNS; column++) {
+            uint8_t nextState = getCellState(board, column, row);
+
+            if (state == nextState) {
+                setCellState(markersThatWin, column, row, state);
+            } else {
+                validStreak = false;
+                break;
+            }
+        }
+
+        if (validStreak) {
+            return true;
+        }
+    }
+
+    // diagonals
+    uint8_t state1 = getCellState(board, 0, 0);
+    uint8_t state2 = getCellState(board, 1, 1);
+    uint8_t state3 = getCellState(board, 2, 2);
+    if (state1 != 0b00 && state1 == state2 && state2 == state3) {
+        memset(markersThatWin, 0, sizeof(markersThatWin));
+        setCellState(markersThatWin, 0, 0, state1);
+        setCellState(markersThatWin, 1, 1, state1);
+        setCellState(markersThatWin, 2, 2, state1);
+        return true;
+    }
+
+    state1 = getCellState(board, 2, 0);
+    state2 = getCellState(board, 1, 1);
+    state3 = getCellState(board, 0, 2);
+    if (state1 != 0b00 && state1 == state2 && state2 == state3) {
+        memset(markersThatWin, 0, sizeof(markersThatWin));
+        setCellState(markersThatWin, 2, 0, state1);
+        setCellState(markersThatWin, 1, 1, state1);
+        setCellState(markersThatWin, 0, 2, state1);
+        return true;
+    }
+
+    return false;
+}
+
+void playAnimation(uint8_t animationId) {
+    animation = animationId;
+    animationStartTime = millis();
+}
+
+void animate() {
+    if (animation == ANIMATION_NONE) {
+        return;
+    }
+
+    uint32_t timePassed = millis() - animationStartTime;
+
+    if (timePassed < 250*8) {
+        bool turnOn = timePassed % 500 < 250;
+        if (animation == ANIMATION_WIN) {
+            turnLightsByMarkersThatWin(turnOn);
+        } else {
+            lightsOn = turnOn;
+        }
+    } else if (timePassed < 250*8 + 100 * ROWS * COLUMNS) {
+        if (animation == ANIMATION_WIN) {
+            turnLightsByMarkersThatWin(true);
+        } else {
+            lightsOn = true;
+        }
+        for (uint8_t row = 0; row < ROWS; row++) {
+            for (uint8_t column = 0; column < COLUMNS; column++) {
+                if (timePassed > 250*8 + 100 * (row * COLUMNS + column)) {
+                    setCellState(lights, column, row, 0b00);
+                }
+            }
+        }
+    } else {
+        restartGame();
+    }
+
+    return;
+}
+
+void turnLightsByMarkersThatWin(bool turnOn) {
+    for (uint8_t row = 0; row < ROWS; row++) {
+        for (uint8_t column = 0; column < COLUMNS; column++) {
+            uint8_t winMarkerState = getCellState(markersThatWin, column, row);
+            if (winMarkerState == 0) {
+                continue;
+            }
+
+            setCellState(lights, column, row, turnOn ? winMarkerState : 0b00);
+        }
+    }
+}
+
+void restartGame() {
+    memset(board, 0, sizeof(board));
+    memset(lights, 0, sizeof(lights));
+    markersPlaced = 0;
+    animation = ANIMATION_NONE;
+    lightsOn = true;
 }
