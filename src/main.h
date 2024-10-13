@@ -40,7 +40,7 @@
 
 #define BUTTON_GROUNDING_ENABLE PA6
 
-#define ENTER_SLEEP_TIMEOUT 1000L * 60 * 3
+#define ENTER_SLEEP_TIMEOUT 1000L * 60 * 2
 
 
 void lightUpLeds();
