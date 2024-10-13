@@ -3,6 +3,8 @@
 #include <avr/io.h>
 #include <avr/pgmspace.h>
 #include <util/delay.h>
+#include "millis.h"
+#include "melody.h"
 
 #define ROWS 3
 #define COLUMNS 3
@@ -36,17 +38,12 @@
 
 #define BUTTON_GROUNDING_ENABLE PA6
 
-#define BUZZER PA7
 
 void lightUpLeds();
 
 void lightUpLedsInColumn(uint8_t column, uint8_t data);
 
 int getLedRowPin(uint8_t row, bool red);
-
-void tone(uint8_t level);
-
-void handleMelody();
 
 void readButtons();
 

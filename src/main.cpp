@@ -4,25 +4,18 @@
 
 static const uint16_t MARKER_PLACED[] PROGMEM = {100, 100, 100, 50};
 
-static const uint16_t *currentMelody = nullptr;
-static uint8_t currentMelodyLength = 0;
-static uint8_t currentMelodyIndex = 0;
-
 static uint8_t board[ROWS] = {0, 0, 0};
 
 int main() {
-    DDRA |= _BV(BUZZER); // set buzzer as output
-    TCCR0A |= _BV(WGM01); // timer0 CTC mode
-    TCCR0B |= _BV(CS01); // timer0 prescaler div 8
-
-    TCCR1B |= _BV(CS12) | _BV(CS10); // timer1 prescaler div 1024
-
+    initMillis(F_CPU);
+    Melody::init();
     DDRA |= _BV(BUTTON_GROUNDING_ENABLE); // set switch pull-down enable pin as output
+    sei();
 
     while (true) {
         lightUpLeds();
         readButtons();
-        handleMelody();
+        Melody::tryPlayNextNote();
     }
 }
 
@@ -39,7 +32,7 @@ void lightUpLeds() {
         PORTB |= ALL_COL_MASK; // set all columns to HIGH
 
         lightUpLedsInColumn(column, board[column]);
-        _delay_us(100);
+        _delay_ms(1);
 
         PORTA &= ~ALL_ROW_MASK; // turn off all row leds
     }
@@ -73,54 +66,6 @@ int getLedRowPin(uint8_t row, bool red) {
         default:
             return -1;
     }
-}
-
-void tone(uint8_t level) {
-    if (level == 0) {
-        DDRA &= ~_BV(BUZZER);
-        TCCR0A &= ~_BV(COM0B0);
-        return;
-    }
-
-    DDRA |= _BV(BUZZER);
-    TCCR0A |= _BV(COM0B0);
-    OCR0A = level;
-}
-
-void playMelody(const uint16_t *melody, uint8_t length) {
-    currentMelody = melody;
-    currentMelodyLength = length;
-    currentMelodyIndex = 0;
-
-    uint16_t level = pgm_read_word(&melody[1]);
-    tone(level);
-
-    TCNT1 = 0;
-}
-
-void handleMelody() {
-    if (currentMelody == nullptr) {
-        return;
-    }
-
-    uint16_t duration = pgm_read_word(&currentMelody[currentMelodyIndex * 2]);
-
-    if (TCNT1 >= duration) {
-        TCNT1 = 0;
-
-        currentMelodyIndex++;
-        if (currentMelodyIndex >= currentMelodyLength) {
-            currentMelody = nullptr;
-            currentMelodyLength = 0;
-            currentMelodyIndex = 0;
-            tone(0);
-            return;
-        }
-
-        uint16_t level = pgm_read_word(&currentMelody[currentMelodyIndex * 2 + 1]);
-        tone(level);
-    }
-
 }
 
 void readButtons() {
@@ -195,5 +140,5 @@ void onButtonPressed(uint8_t column, uint8_t row) {
     board[column] |= (isRedsTurn ? 0b11 : 0b01) << (row * 2);
     isRedsTurn = !isRedsTurn;
 
-    playMelody(MARKER_PLACED, sizeof(MARKER_PLACED) / sizeof(uint16_t) / 2);
+    Melody::play(MARKER_PLACED, sizeof(MARKER_PLACED) / sizeof(uint16_t) / 2);
 }
