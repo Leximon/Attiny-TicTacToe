@@ -2,6 +2,7 @@
 
 #include <avr/io.h>
 #include <avr/pgmspace.h>
+#include <avr/sleep.h>
 #include <util/delay.h>
 #include <string.h>
 #include "millis.h"
@@ -48,7 +49,7 @@ void lightUpLeds();
 
 void lightUpLedsInColumn(uint8_t column, uint8_t data);
 
-int getLedRowPin(uint8_t row, bool red);
+//int getLedRowPin(uint8_t row, bool red);
 
 void readButtons();
 
@@ -62,4 +63,6 @@ bool checkWin();
 
 void restartGame();
 
-void turnLightsByMarkersThatWin(bool turnOn);
+void turnLightsByMarkerMask(bool turnOn);
+
+void enterSleep();
