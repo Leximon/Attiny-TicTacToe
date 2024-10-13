@@ -24,6 +24,7 @@ static const uint16_t MELODY_WIN[] PROGMEM = {
 };
 
 static uint8_t lights[COLUMNS] = {0, 0, 0};
+static uint32_t lastInteractionTime = 0;
 
 int main() {
     initMillis(F_CPU);
@@ -38,10 +39,14 @@ int main() {
     enterSleep();
 
     while (true) {
-        animate();
+        animateMask();
         lightUpLeds();
         readButtons();
         Melody::tryPlayNextNote();
+
+        if (millis() - lastInteractionTime > ENTER_SLEEP_TIMEOUT) {
+            restartGame();
+        }
     }
 }
 
@@ -157,9 +162,9 @@ static uint8_t board[COLUMNS] = {0, 0, 0};
 static bool isRedsTurn = false;
 static uint8_t markersPlaced = 0;
 
-static int animation = ANIMATION_NONE;
-static uint32_t animationStartTime = 0;
-static uint8_t markerMask[COLUMNS] = {0, 0, 0};
+static bool maskAnimationPlaying = false;
+static uint32_t maskAnimationStartTime = 0;
+static uint8_t animationMask[COLUMNS] = {0, 0, 0};
 
 void setCellState(uint8_t* grid, uint8_t column, uint8_t row, uint8_t state) {
     uint8_t bitShift = row * 2;
@@ -173,7 +178,9 @@ uint8_t getCellState(const uint8_t* grid, uint8_t column, uint8_t row) {
 }
 
 void onButtonPressed(uint8_t column, uint8_t row) {
-    if (board[column] >> (row * 2) & 0x1 || animation != ANIMATION_NONE) {
+    lastInteractionTime = millis();
+
+    if (board[column] >> (row * 2) & 0x1 || maskAnimationPlaying) {
         return;
     }
 
@@ -186,14 +193,14 @@ void onButtonPressed(uint8_t column, uint8_t row) {
 
     if (checkWin()) {
         Melody::play(MELODY_WIN, sizeof(MELODY_WIN) / sizeof(uint16_t) / 2);
-        playAnimation(ANIMATION_WIN);
+        playMaskAnimation();
         return;
     }
 
     if (markersPlaced == ROWS * COLUMNS) {
         Melody::play(MELODY_DRAW, sizeof(MELODY_DRAW) / sizeof(uint16_t) / 2);
-        memcpy(markerMask, board, sizeof(markerMask));
-        playAnimation(ANIMATION_DRAW);
+        memcpy(animationMask, board, sizeof(animationMask));
+        playMaskAnimation();
         return;
     }
 
@@ -209,10 +216,10 @@ bool winCheckCells(
     uint8_t state2 = getCellState(board, col2, row2);
     uint8_t state3 = getCellState(board, col3, row3);
     if (state1 != 0b00 && state1 == state2 && state2 == state3) {
-        memset(markerMask, 0, sizeof(markerMask));
-        setCellState(markerMask, col1, row1, state1);
-        setCellState(markerMask, col2, row2, state1);
-        setCellState(markerMask, col3, row3, state1);
+        memset(animationMask, 0, sizeof(animationMask));
+        setCellState(animationMask, col1, row1, state1);
+        setCellState(animationMask, col2, row2, state1);
+        setCellState(animationMask, col3, row3, state1);
         return true;
     }
 
@@ -223,8 +230,8 @@ bool checkWin() {
     // columns
     for (uint8_t column = 0; column < COLUMNS; column++) {
         if (board[column] == 0b010101 || board[column] == 0b111111) {
-            memset(markerMask, 0, sizeof(markerMask));
-            markerMask[column] = board[column];
+            memset(animationMask, 0, sizeof(animationMask));
+            animationMask[column] = board[column];
             return true;
         }
     }
@@ -250,17 +257,17 @@ bool checkWin() {
     return false;
 }
 
-void playAnimation(uint8_t animationId) {
-    animation = animationId;
-    animationStartTime = millis();
+void playMaskAnimation() {
+    maskAnimationPlaying = true;
+    maskAnimationStartTime = millis();
 }
 
-void animate() {
-    if (animation == ANIMATION_NONE) {
+void animateMask() {
+    if (!maskAnimationPlaying) {
         return;
     }
 
-    uint32_t timePassed = millis() - animationStartTime;
+    uint32_t timePassed = millis() - maskAnimationStartTime;
 
     if (timePassed < 250*8) {
         bool turnOn = timePassed % 500 < 250;
@@ -282,7 +289,7 @@ void animate() {
 void turnLightsByMarkerMask(bool turnOn) {
     for (uint8_t row = 0; row < ROWS; row++) {
         for (uint8_t column = 0; column < COLUMNS; column++) {
-            uint8_t winMarkerState = getCellState(markerMask, column, row);
+            uint8_t winMarkerState = getCellState(animationMask, column, row);
             if (winMarkerState == 0) {
                 continue;
             }
@@ -296,7 +303,7 @@ void restartGame() {
     memset(board, 0, sizeof(board));
     memset(lights, 0, sizeof(lights));
     markersPlaced = 0;
-    animation = ANIMATION_NONE;
+    maskAnimationPlaying = false;
 
     enterSleep();
 }
