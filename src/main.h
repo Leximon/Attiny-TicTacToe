@@ -4,7 +4,6 @@
 #include <avr/pgmspace.h>
 #include <avr/sleep.h>
 #include <util/delay.h>
-#include <string.h>
 #include "millis.h"
 #include "melody.h"
 
@@ -40,7 +39,7 @@
 
 #define BUTTON_GROUNDING_ENABLE PA6
 
-#define ENTER_SLEEP_TIMEOUT 1000L * 60 * 2
+#define ENTER_SLEEP_TIMEOUT (1000L * 60 * 2)
 
 
 void lightUpLeds();
@@ -62,3 +61,7 @@ void restartGame();
 void turnLightsByMarkerMask(bool turnOn);
 
 void enterSleep();
+
+void memset(uint8_t* buffer, uint8_t value, size_t size);
+
+void memcpy(uint8_t* dest, const uint8_t* src, size_t size);

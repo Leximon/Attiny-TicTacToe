@@ -11,7 +11,9 @@ static const uint16_t MELODY_DRAW[] PROGMEM = {
         50, 0,
         100, 150,
         50, 0,
-        100, 200
+        100, 200,
+        50, 0,
+        300, 215
 };
 static const uint16_t MELODY_WIN[] PROGMEM = {
         100, 100,
@@ -20,7 +22,9 @@ static const uint16_t MELODY_WIN[] PROGMEM = {
         50, 0,
         100, 50,
         50, 0,
-        100, 75
+        100, 75,
+        50, 0,
+        100, 50
 };
 
 static uint8_t lights[COLUMNS] = {0, 0, 0};
@@ -63,7 +67,7 @@ void lightUpLeds() {
         PORTB |= ALL_COL_MASK; // set all columns to HIGH
 
         lightUpLedsInColumn(column, lights[column]);
-        _delay_ms(2);
+        _delay_ms(3);
 
         PORTA &= ~ALL_ROW_MASK; // turn off all row leds
     }
@@ -111,8 +115,7 @@ void readButtons() {
 
     PORTA |= _BV(BUTTON_GROUNDING_ENABLE); // enable button grounding
 
-    __asm__("nop");
-    __asm__("nop");
+    _delay_loop_1(5);
     uint8_t dataPB = PINB;
     if (bit_is_clear(dataPB, BUTTON_0_0)) {
         onButtonPressed(0, 0);
@@ -129,8 +132,7 @@ void readButtons() {
 
     PORTA |= ALL_BUTTON_PA_MASK; // PORT-A enable pull-up resistor
 
-    __asm__("nop");
-    __asm__("nop");
+    _delay_loop_1(5);
     uint8_t dataPA = PINA;
     if (bit_is_clear(dataPA, BUTTON_1_0)) {
         onButtonPressed(1, 0);
@@ -166,10 +168,10 @@ static bool maskAnimationPlaying = false;
 static uint32_t maskAnimationStartTime = 0;
 static uint8_t animationMask[COLUMNS] = {0, 0, 0};
 
-void setCellState(uint8_t* grid, uint8_t column, uint8_t row, uint8_t state) {
+void setCellState(uint8_t* grid, uint8_t column, uint8_t row, uint8_t twoBitState) {
     uint8_t bitShift = row * 2;
     grid[column] &= ~(0b11 << bitShift);
-    grid[column] |= state << bitShift;
+    grid[column] |= twoBitState << bitShift;
 }
 
 uint8_t getCellState(const uint8_t* grid, uint8_t column, uint8_t row) {
@@ -237,23 +239,18 @@ bool checkWin() {
     }
 
     // rows
-    if (winCheckCells(0, 0,1, 0,2, 0)) {
+    if (winCheckCells(0, 0,1, 0,2, 0))
         return true;
-    }
-    if (winCheckCells(0, 1,1, 1,2, 1)) {
+    if (winCheckCells(0, 1,1, 1,2, 1))
         return true;
-    }
-    if (winCheckCells(0, 2,1, 2,2, 2)) {
+    if (winCheckCells(0, 2,1, 2,2, 2))
         return true;
-    }
 
     // diagonals
-    if (winCheckCells(0, 0,1, 1,2, 2)) {
+    if (winCheckCells(0, 0,1, 1,2, 2))
         return true;
-    }
-    if (winCheckCells(0, 2, 1, 1,2, 0)) {
+    if (winCheckCells(0, 2, 1, 1,2, 0))
         return true;
-    }
     return false;
 }
 
@@ -269,14 +266,14 @@ void animateMask() {
 
     uint32_t timePassed = millis() - maskAnimationStartTime;
 
-    if (timePassed < 250*8) {
+    if (timePassed < 250*12) {
         bool turnOn = timePassed % 500 < 250;
         turnLightsByMarkerMask(turnOn);
-    } else if (timePassed < 250*8 + 100 * ROWS * COLUMNS) {
+    } else if (timePassed < 250*12 + 100 * ROWS * COLUMNS) {
         turnLightsByMarkerMask(true);
         for (uint8_t row = 0; row < ROWS; row++) {
             for (uint8_t column = 0; column < COLUMNS; column++) {
-                if (timePassed > 250*8 + 100 * (row * COLUMNS + column)) {
+                if (timePassed > 250*12 + 100 * (row * COLUMNS + column)) {
                     setCellState(lights, column, row, 0b00);
                 }
             }
@@ -327,4 +324,16 @@ void enterSleep() {
 ISR(PCINT0_vect) {
 }
 ISR(PCINT1_vect) {
+}
+
+void memset(uint8_t* buffer, uint8_t value, size_t size) {
+    for (size_t i = 0; i < size; i++) {
+        buffer[i] = value;
+    }
+}
+
+void memcpy(uint8_t* dest, const uint8_t* src, size_t size) {
+    for (size_t i = 0; i < size; i++) {
+        dest[i] = src[i];
+    }
 }
