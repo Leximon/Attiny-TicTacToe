@@ -1,0 +1,9 @@
+/*
+
+!/src
+!/lib
+!/include
+!/test
+!/.gitignore
+!/platformio.ini
+!/.idea
