@@ -45,3 +45,9 @@ uint32_t millis() {
     }
     return millis_return;
 }
+
+void resetMillis() {
+    ATOMIC_BLOCK(ATOMIC_FORCEON) {
+        timer1_millis = 0;
+    }
+}

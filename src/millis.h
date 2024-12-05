@@ -18,3 +18,5 @@ ISR(TIMER1_COMPA_vect);
 void initMillis(uint32_t fcpu);
 
 uint32_t millis();
+
+void resetMillis();

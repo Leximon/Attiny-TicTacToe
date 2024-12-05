@@ -33,7 +33,7 @@ static uint32_t lastInteractionTime = 0;
 int main() {
     initMillis(F_CPU);
     Melody::init();
-    DDRA |= _BV(BUTTON_GROUNDING_ENABLE); // set switch pull-down enable pin as output
+    DDRA |= _BV(BUTTON_GROUNDING_ENABLE); // set button ground enable pin as output
     sei();
 
     GIMSK |= _BV(PCIE0) | _BV(PCIE1); // enable pin change interrupt for wake-up
@@ -43,9 +43,12 @@ int main() {
     enterSleep();
 
     while (true) {
+        readButtons();
+        PORTA &= ~_BV(BUTTON_GROUNDING_ENABLE); // disable button grounding !IMPORTANT! to prevent short circuit
+        _delay_loop_1(5);
+
         animateMask();
         lightUpLeds();
-        readButtons();
         Melody::tryPlayNextNote();
 
         if (millis() - lastInteractionTime > ENTER_SLEEP_TIMEOUT) {
@@ -90,11 +93,11 @@ void lightUpLedsInColumn(uint8_t column, uint8_t data) {
         if (isSet) {
             uint8_t pin;
             if (row == 0) {
-                pin = red ? PA4 : PA5;
+                pin = red ? ROW_0_RED : ROW_0_GREEN;
             } else if (row == 1) {
-                pin = red ? PA2 : PA3;
+                pin = red ? ROW_1_RED : ROW_1_GREEN;
             } else {
-                pin = red ? PA0 : PA1;
+                pin = red ? ROW_2_RED : ROW_2_GREEN;
             }
             PORTA |= _BV(pin);
         }
@@ -318,7 +321,8 @@ void enterSleep() {
 
     PORTA &= ~_BV(BUTTON_GROUNDING_ENABLE);
 
-    TCNT1 = 0; // reset millis to 0
+    TCNT1 = 0;
+    resetMillis();
 }
 
 ISR(PCINT0_vect) {
