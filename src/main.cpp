@@ -9,9 +9,9 @@
 #include <util/atomic.h>
 
 #define CELL_STATE_OFF 0b00
-#define CELL_STATE_RED 0b01
-#define CELL_STATE_GREEN 0b10
-#define CELL_STATE_ORANGE 0b11
+#define CELL_RED 0b01
+#define CELL_GREEN 0b10
+#define CELL_ORANGE 0b11
 
 #define LED_COL_PORT PORTB
 #define LED_COL_DDR DDRB
@@ -72,6 +72,7 @@ uint8_t displayCells[3];
     enablePullUp(BUTTON_ROW_PORT, ALL_BUTTON_ROWS);
 
     TCCR0B |= (1 << CS01); // Set Timer0 prescaler to 8
+    // TCCR0B |= (1 << CS02); // Set Timer0 prescaler to 256
     // TCCR0B |= (1 << CS02) | (1 << CS00); // Set Timer0 prescaler to 1024
     TIMSK |= (1 << TOIE0); // Enable Timer0 overflow interrupt
     sei();
@@ -108,23 +109,31 @@ void readButtons() {
             if (pin & rowFlag)
                 continue; // button not pressed
 
-            if (pressedCol != 255 || pressedRow != 255)
+            if (pressedRow != 255 || pressedCol != 255)
                 return; // more than one button pressed: ignore
 
 
-            pressedCol = col;
             pressedRow = row;
+            pressedCol = col;
         }
     }
 
-    if (pressedCol != 255 && pressedRow != 255)
-        buttonPressed(pressedCol, pressedRow);
+    if (pressedRow != 255 && pressedCol != 255)
+        buttonPressed(pressedRow, pressedCol);
 }
 
-void buttonPressed(uint8_t col, uint8_t row) {
-    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-        setCell(displayCells, row, col, CELL_STATE_RED);
+bool isGreensTurn = false;
+
+void buttonPressed(uint8_t row, uint8_t col) {
+    uint8_t cell = getCell(displayCells, row, col);
+    if (cell != CELL_STATE_OFF)
+        return;
+
+
+    ATOMIC_BLOCK(ATOMIC_FORCEON) {
+        setCell(displayCells, row, col, isGreensTurn ? CELL_GREEN : CELL_RED);
     }
+    isGreensTurn = !isGreensTurn;
 }
 
 void setCell(uint8_t cells[3], uint8_t row, uint8_t col, uint8_t state) {
@@ -151,11 +160,11 @@ ISR(TIMER0_OVF_vect) {
     for (uint8_t row = 0; row < 3; row++) {
         uint8_t cellState = getCell(displayCells, row, colIndex);
 
-        if (cellState == CELL_STATE_RED || cellState == CELL_STATE_ORANGE) {
+        if (cellState == CELL_RED || cellState == CELL_ORANGE) {
             uint8_t rowR = pgm_read_byte(&LED_ROWS_R[row]);
             setHigh(LED_ROW_PORT, rowR);
         }
-        if (cellState == CELL_STATE_GREEN || cellState == CELL_STATE_ORANGE) {
+        if (cellState == CELL_GREEN || cellState == CELL_ORANGE) {
             uint8_t rowG = pgm_read_byte(&LED_ROWS_G[row]);
             setHigh(LED_ROW_PORT, rowG);
         }
