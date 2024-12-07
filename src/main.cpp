@@ -8,7 +8,7 @@
 #include <avr/pgmspace.h>
 #include <util/atomic.h>
 
-#define CELL_STATE_OFF 0b00
+#define CELL_OFF 0b00
 #define CELL_RED 0b01
 #define CELL_GREEN 0b10
 #define CELL_ORANGE 0b11
@@ -56,25 +56,43 @@ static const uint8_t LED_ROWS_G[] PROGMEM = {LED_ROW_1_G, LED_ROW_2_G, LED_ROW_3
 
 static const uint8_t BUTTON_ROWS[] PROGMEM = {BUTTON_ROW_1, BUTTON_ROW_2, BUTTON_ROW_3};
 
+#define BUZZER_DDR DDRA
+#define BUZZER_PORT PORTA
+#define BUZZER (1 << PA1)
+
 #define setOutput(port, flags) port |= flags
 #define setInput(port, flags) port &= ~(flags)
 #define setHigh(port, flags) port |= flags
 #define setLow(port, flags) port &= ~(flags)
+#define toggleHighLow(port, flags) port |= flags
 #define enablePullUp(port, flags) port |= flags
 
+#define packPattern(r1, c1, r2, c2, r3, c3) ((r1 << 10) | (c1 << 8) | (r2 << 6) | (c2 << 4) | (r3 << 2) | c3)
+#define unpackPatternCol(offset) ((pattern >> (offset * 4 + 0)) & 0b11)
+#define unpackPatternRow(offset) ((pattern >> (offset * 4 + 2)) & 0b11)
+static const uint16_t cellWinPatterns[] PROGMEM = {
+        packPattern(0, 0, 0, 1, 0, 2), packPattern(1, 0, 1, 1, 1, 2), packPattern(2, 0, 2, 1, 2, 2),
+        packPattern(0, 0, 1, 0, 2, 0),packPattern(0, 1, 1, 1, 2, 1),packPattern(0, 2, 1, 2, 2, 2),
+        packPattern(0, 0, 1, 1, 2, 2),packPattern(0, 2, 1, 1, 2, 0)
+};
+
+uint8_t cellsPlaced = 0;
 uint8_t displayCells[3];
 
 [[noreturn]] int main() {
-    setOutput(LED_COL_DDR, ALL_LED_COLS);
-    setOutput(LED_ROW_DDR, ALL_LED_ROWS_RG);
-
+    // button matrix
     setInput(BUTTON_ROW_DDR, ALL_BUTTON_ROWS);
     enablePullUp(BUTTON_ROW_PORT, ALL_BUTTON_ROWS);
 
+    // LED multiplexing
+    setOutput(LED_COL_DDR, ALL_LED_COLS);
+    setOutput(LED_ROW_DDR, ALL_LED_ROWS_RG);
     TCCR0B |= (1 << CS01); // Set Timer0 prescaler to 8
-    // TCCR0B |= (1 << CS02); // Set Timer0 prescaler to 256
-    // TCCR0B |= (1 << CS02) | (1 << CS00); // Set Timer0 prescaler to 1024
     TIMSK |= (1 << TOIE0); // Enable Timer0 overflow interrupt
+
+    // buzzer
+    setOutput(BUZZER_DDR, BUZZER);
+
     sei();
 
     while (true) {
@@ -124,16 +142,104 @@ void readButtons() {
 
 bool isGreensTurn = false;
 
+void beep() {
+    setHigh(BUZZER_PORT, BUZZER);
+    _delay_ms(10);
+    setLow(BUZZER_PORT, BUZZER);
+}
+
 void buttonPressed(uint8_t row, uint8_t col) {
     uint8_t cell = getCell(displayCells, row, col);
-    if (cell != CELL_STATE_OFF)
+    if (cell != CELL_OFF)
         return;
 
 
     ATOMIC_BLOCK(ATOMIC_FORCEON) {
         setCell(displayCells, row, col, isGreensTurn ? CELL_GREEN : CELL_RED);
     }
+    cellsPlaced++;
     isGreensTurn = !isGreensTurn;
+
+    beep();
+
+    if (checkWin())
+        return;
+
+    if (cellsPlaced >= 9) {
+        playDrawSequence();
+        return;
+    }
+}
+
+bool checkWin() {
+    for (const uint16_t& pgmPattern : cellWinPatterns) {
+        uint16_t pattern = pgm_read_word(&pgmPattern);
+
+        uint8_t lastCellState = 0;
+
+        for (uint8_t offset = 0; offset < 3; offset++) {
+            uint8_t col = unpackPatternCol(offset);
+            uint8_t row = unpackPatternRow(offset);
+
+            uint8_t cell = getCell(displayCells, row, col);
+            if (cell == CELL_OFF) {
+                lastCellState = 0;
+                break;
+            }
+
+            // first cell that is not off
+            if (lastCellState == 0) {
+                lastCellState = cell;
+                continue;
+            }
+
+            // streak broken
+            if (cell != lastCellState) {
+                lastCellState = 0;
+                break;
+            }
+        }
+
+        if (lastCellState != 0) {
+            playWinSequence(pattern, lastCellState);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void playWinSequence(uint16_t pattern, uint8_t cellState) {
+    for (uint8_t i = 0; i < 5; i++) {
+        _delay_ms(200);
+
+        for (uint8_t offset = 0; offset < 3; offset++) {
+            uint8_t col = unpackPatternCol(offset);
+            uint8_t row = unpackPatternRow(offset);
+
+            setCell(displayCells, row, col, i % 2 == 0 ? CELL_OFF : cellState);
+        }
+        beep();
+    }
+
+    _delay_ms(200);
+
+    resetGame();
+}
+
+void playDrawSequence() {
+    _delay_ms(500);
+    beep();
+    _delay_ms(100);
+    beep();
+    _delay_ms(500);
+
+    resetGame();
+}
+
+void resetGame() {
+    clearCells(displayCells);
+    cellsPlaced = 0;
 }
 
 void setCell(uint8_t cells[3], uint8_t row, uint8_t col, uint8_t state) {
@@ -147,7 +253,13 @@ uint8_t getCell(const uint8_t cells[3], uint8_t row, uint8_t col) {
     return (cells[col] >> bitShift) & 0b11;
 }
 
-// light up the LEDs
+void clearCells(const uint8_t cells[3]) {
+    for (uint8_t& displayCell : displayCells) {
+        displayCell = 0;
+    }
+}
+
+// multiplexing the LEDs
 ISR(TIMER0_OVF_vect) {
     volatile static uint8_t colIndex = 0;
 
